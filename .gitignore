@@ -4,3 +4,5 @@ build/
 *.cpio
 *.pem
 *.key
+
+__pycache__/
