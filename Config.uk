@@ -1,1 +1,38 @@
-# Application selects libraries through its defconfig.
+menu "nghttpx deployment support"
+config APPNGHTTPX_BOOT_EPOCH
+	bool "Anchor image realtime to a trusted boot epoch"
+	default n
+	help
+		Wrap clock_gettime/gettimeofday/time for the whole image. Reads
+		/native-epoch.txt. Leave disabled when the platform provides realtime.
+config APPNGHTTPX_CONTROL
+	bool "Authenticated UDP management endpoint"
+	depends on LWIP_IPV4
+	default n
+	help
+		Reads /native-control.token and optional control/drain-seconds settings.
+		Intended for this single-service VM deployment, not required by nghttpx.
+		Enable shutdown and/or STATS below. At least one must be enabled.
+config APPNGHTTPX_SHUTDOWN
+	bool "Accept authenticated shutdown requests"
+	depends on APPNGHTTPX_CONTROL
+	default n
+config APPNGHTTPX_STATS
+	bool "Expose STATS through the management endpoint"
+	depends on APPNGHTTPX_CONTROL
+	default n
+config APPNGHTTPX_FD_STATS
+	bool "Scan file descriptors for diagnostic STATS"
+	depends on APPNGHTTPX_STATS
+	default n
+	help
+		Scans 4096 descriptors on each authenticated STATS query. Disabled by default.
+config APPNGHTTPX_IPV6
+	bool "Configure an explicitly named lwIP IPv6 interface"
+	depends on LWIP_IPV6 && LWIP_THREADS
+	select LWIP_IPV6_SETUP
+	default n
+	help
+		Uses ipv6-interface and optional ipv6-address/ipv6-slaac settings.
+		ipv6-multicast-rx=yes explicitly asserts the interface receives multicast.
+endmenu

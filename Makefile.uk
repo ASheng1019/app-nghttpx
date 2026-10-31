@@ -1,3 +1,4 @@
 # SPDX-License-Identifier: BSD-3-Clause
 $(eval $(call addlib,appnghttpx))
-APPNGHTTPX_SRCS-y += $(APP_BASE)/main.c
+include $(APP_BASE)/Makefile.deployment
+APPNGHTTPX_SRCS-y += $(APP_BASE)/main.c $(NGHTTPX_DEPLOYMENT_SRCS-y)

@@ -122,7 +122,8 @@ def main():
             'control=10.0.2.15,4434\ndrain-seconds=5\n'
             + (Path(__file__).resolve().parents[1]/
                'recommended-runtime.conf').read_text())
-        (rootfs/'native-boot.txt').write_text(f'{int(time.time())} {token}\n')
+        (rootfs/'native-epoch.txt').write_text(f'{int(time.time())}\n')
+        (rootfs/'native-control.token').write_text(token+'\n')
         names = b'\0'.join(p.name.encode() for p in sorted(rootfs.iterdir()))+b'\0'
         with (output/'demo.cpio').open('xb') as archive:
             subprocess.run([cpio, '--null', '-o', '--format=newc', '--quiet'],

@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Included by the app and isolated test applications; no target code in host tools.
+NGHTTPX_APP_BASE ?= $(APP_BASE)
+NGHTTPX_DEPLOYMENT_SRCS-y := $(NGHTTPX_APP_BASE)/deployment.c
+NGHTTPX_DEPLOYMENT_SRCS-$(CONFIG_APPNGHTTPX_BOOT_EPOCH) += $(NGHTTPX_APP_BASE)/clock.c
+NGHTTPX_DEPLOYMENT_SRCS-$(CONFIG_APPNGHTTPX_CONTROL) += $(NGHTTPX_APP_BASE)/control.c
+LDFLAGS-$(CONFIG_APPNGHTTPX_BOOT_EPOCH) += -Wl,--wrap=clock_gettime -Wl,--wrap=gettimeofday -Wl,--wrap=time

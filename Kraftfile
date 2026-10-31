@@ -62,6 +62,11 @@ targets:
   - name: nghttpx-qemu-arm64
     architecture: arm64
     platform: qemu
+    - CONFIG_APPNGHTTPX_BOOT_EPOCH=y
+    - CONFIG_APPNGHTTPX_CONTROL=y
+    - CONFIG_APPNGHTTPX_SHUTDOWN=y
+    - CONFIG_APPNGHTTPX_STATS=y
+    - CONFIG_APPNGHTTPX_IPV6=y
 libraries:
   musl:
     source: ../libs/lib-musl

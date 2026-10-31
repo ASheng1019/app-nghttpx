@@ -11,10 +11,12 @@ HTTP/3 client -- QUIC/UDP --> Unikraft VM -- HTTP/1.1 or HTTP/2/TCP --> origin
                             libev + musl + lwIP
 ```
 
-The target entrypoint in [main.c](main.c) calls `uk_nghttpx_run()` once.
-Protocol processing, TLS, backend proxying and platform glue live in separate
-library ports. This repository supplies the application, build profile and a
-host-side demonstration script, not another QUIC implementation.
+The target entrypoint in [main.c](main.c) calls `app_nghttpx_run()` once.
+[deployment.c](deployment.c) configures the explicitly selected clock, network
+and optional management hooks, then calls `uk_nghttpx_run(options)`.
+Protocol processing, TLS and backend proxying remain in library ports.
+This repository supplies deployment support and a host-side demonstration,
+not another QUIC implementation.
 
 ## Requirements
 
@@ -48,7 +50,7 @@ application to build against either layout.
 APP_ROOT="$PWD"
 DEPS_ROOT="$(dirname "$APP_ROOT")/http3-deps"
 git clone https://github.com/ASheng1019/unikraft-http3.git "$DEPS_ROOT"
-git -C "$DEPS_ROOT" checkout --detach 7f904b03be36c4fef1892c8d3bef146758d8f438
+git -C "$DEPS_ROOT" checkout --detach 228a6fce6fa66266e68a4324925fb69ec77ac3cb
 git -C "$DEPS_ROOT" submodule update --init --recursive -- unikraft libs
 ```
 
@@ -132,7 +134,8 @@ The generated `rootfs/` also provides a concrete example for a different origin:
 |---|---|
 | `/nghttpx.conf` | QUIC listener, origins, TLS files and single-worker settings |
 | `/server.pem`, `/server.key` | Server certificate and private key |
-| `/native-boot.txt` | Fresh trusted Unix epoch in seconds, then a 64-hex-character control token |
+| `/native-epoch.txt` | Fresh trusted Unix epoch in seconds; required only with APPNGHTTPX_BOOT_EPOCH |
+| `/native-control.token` | 64 hexadecimal characters; required only with APPNGHTTPX_CONTROL |
 | `/native-runtime.conf` | PMTUD/ECN, control address and drain timeout |
 
 The demo guest uses `10.0.2.15:4433`; `10.0.2.2` reaches the host origin through
@@ -144,15 +147,67 @@ Unknown or unsupported profile options are rejected at startup.
 Keep the generated keys, token and initrd private. The CA is only for this local
 demo. Regenerate boot data on each launch: the supplied epoch anchors realtime
 to the guest monotonic clock, it is not an RTC, synchronization or clock
-correction mechanism. The port's clock wrappers affect the whole image.
-Shutdown control is an application-specific trusted-management contract, not a
-general network administration interface.
+correction mechanism. The app's explicitly selected clock wrappers affect
+the whole image. Selecting the nghttpx library itself adds no wrappers.
+Shutdown/STATS are optional application management, with separate feature
+switches; service lifecycle hooks expose no private nghttpx objects.
 
 To use another origin, edit the generated backend entry and rebuild the initrd
-with GNU cpio (or Unikraft's mkcpio); regenerate `/native-boot.txt` immediately
+with GNU cpio (or Unikraft's mkcpio); regenerate `/native-epoch.txt` immediately
 before boot. An application/configuration change does not require protocol
 code changes. The demo deliberately supplies a simple local HTTP/1.1 origin;
 the broader workspace tests additionally cover HTTP/2 and verified TLS origins.
+
+## Select deployment capabilities
+
+All deployment feature switches default to **n** in Config.uk. The provided
+ARM64 defconfig/Kraftfile explicitly enable boot epoch, management, shutdown,
+STATS and named-interface IPv6 support for the demonstrated profile. FD scans
+remain disabled. Build a fresh image after changing these selections.
+
+| Selection | Effect |
+|---|---|
+| APPNGHTTPX_BOOT_EPOCH | Compile/link clock.c and the three global libc wrappers; otherwise use platform realtime, ignoring native-epoch.txt |
+| APPNGHTTPX_CONTROL | Compile the UDP management adapter and require native-control.token; disabling it removes the socket/token requirement and both management commands |
+| APPNGHTTPX_SHUTDOWN | Accept authenticated stop, start bounded drain and request upstream graceful shutdown |
+| APPNGHTTPX_STATS | Return read-only counters and available allocator data; can be used with shutdown disabled |
+| APPNGHTTPX_FD_STATS | Explicitly scan 4096 FDs per STATS request; otherwise fds=-1 and fd_scan_limit=0 |
+| APPNGHTTPX_IPV6 | Parse named-interface deployment settings and call the independent lwIP IPv6 helper |
+
+For a service without a management endpoint, clear CONTROL, SHUTDOWN, STATS
+and FD_STATS, omit native-control.token, control and drain-seconds. HTTP/3 is
+unchanged; the host/VM supervisor owns teardown. The demo helper assumes the
+provided shutdown-enabled profile; it must not be used to claim graceful exit
+for an unmanaged image. For STATS-only clear SHUTDOWN and omit drain-seconds.
+Management requires at least shutdown or STATS. Options for disabled features
+are rejected rather than silently ignored.
+
+Clearing BOOT_EPOCH removes all three --wrap flags and their implementations.
+It requires another working realtime provider: this ARM64 generic-timer target
+currently supplies only an epoch-zero wall clock, so it fails startup without
+one. The isolated platform-clock test application is a test provider, not an
+RTC implementation. CLOCK_MONOTONIC/QUIC timers are never reanchored.
+
+IPv6 setup does not choose the first NIC. Provide an explicit interface, e.g.
+the qualified single-virtio image uses en1 (the lwIP loopback occupies index0):
+
+```ini
+ipv6-interface=en1
+ipv6-multicast-rx=yes
+ipv6-address=fd00:1::2
+ipv6-slaac=no
+ipv6-dad-timeout-ms=6000
+```
+
+The multicast setting is an explicit assertion for this named transport, not
+a capability detected for every uknetdev. Enable it only when receive-side
+multicast works without a hardware filter callback (as qualified here with
+virtio). The lwIP helper handles MLD/link-local/SLAAC/static address operations
+on the TCP/IP thread and waits for link-local/static DAD. Duplicate addresses,
+missing interfaces, unavailable multicast and DAD timeout fail startup. SLAAC
+does not wait for or guarantee acquisition of a global address. Configuration
+is not rolled back after failure. Another network initializer may configure
+IPv6 instead; leave these deployment options absent in that case.
 
 ## Scope and upstream status
 
@@ -169,7 +224,8 @@ one-request demo, and the full policy-specific regression results must not be
 attributed to the initial base ports.
 
 This application is a candidate native example. Official library names,
-repository/catalog placement, clock/network/control ownership and final
-upstream CI still require maintainer agreement. MIT/BSD/Zlib and other upstream
+repository/catalog placement, the proposed deployment interfaces and final
+upstream CI still require maintainer agreement. Clock/control live in this app;
+common named-interface IPv6 mechanics live in the lwIP port. MIT/BSD/Zlib and other upstream
 notices remain in their respective ports; this application uses BSD-3-Clause
 ([COPYING](COPYING)).
